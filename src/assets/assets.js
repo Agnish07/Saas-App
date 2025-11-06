@@ -1,6 +1,8 @@
 // assets.js
 import logo from "./logo.svg";
 import gradientbg from "./gradientbg.png";
+import star_icon from "./star_icon.svg";
+import star_dull_icon from "./star_dull_icon.svg";
 import user_group from "./user_group.png";
 import { SquarePen, Hash, Image, Eraser, Scissors, FileText } from 'lucide-react';
 
@@ -8,6 +10,8 @@ export const assets = {
   logo,
   gradientbg,
   user_group,
+  star_icon,
+  star_dull_icon,
 }
 
 export const AiToolsData = [
