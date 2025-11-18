@@ -16,7 +16,6 @@ const WriteArticle = () => {
   };
 
   return (
-    // main outer: no wrap, center content with max width
     <div className="h-full overflow-y-auto p-6 text-[#E6E6E6] bg-[#252525]">
       <div className="w-full max-w-[1200px] mx-auto flex items-start gap-6">
         {/* LEFT (form) */}
