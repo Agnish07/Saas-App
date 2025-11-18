@@ -13,3 +13,11 @@ body {
   background: #252525;
   color: #E6E6E6;
 }
+
+.reset-tw, .reset-tw *{
+  all: revert !important;
+}
+
+.cl-drawerRool{
+  z-index: 10;
+}
