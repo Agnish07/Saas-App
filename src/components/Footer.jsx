@@ -48,7 +48,7 @@ const Footer = () => {
       </div>
 
       <p className="pt-5 text-center text-xs md:text-sm text-[#7A7A7A] pb-6">
-        © 2024 <span className="text-[#E6E6E6]">BAT AI</span>. All Rights Reserved.
+        © 2025 <span className="text-[#E6E6E6]">BAT AI</span>. All Rights Reserved.
       </p>
     </footer>
   )

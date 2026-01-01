@@ -83,7 +83,7 @@ const BlogTitles = () => {
           <div className="flex-1 flex justify-center items-center">
             <div className="text-sm flex flex-col items-center gap-5 text-[#9E9E9E]">
               <Hash className="w-9 h-9 text-[#7A7A7A]" />
-              <p className="text-center">Enter a topic and click “Generate Title to get started</p>
+              <p className="text-center">Enter a topic and click “Generate Title" to get started</p>
             </div>
           </div>
         </div>

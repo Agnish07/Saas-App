@@ -1,3 +1,4 @@
+// App.jsx
 import Home from './pages/Home'
 import Layout from './pages/Layout'
 import Dashboard from './pages/Dashboard'
