@@ -195,7 +195,7 @@ export const generateImage = async (req, res) => {
 export const removeImageBackground = async (req, res) => {
   try {
     const { userId } = req.auth();
-    const { image } = req.file;
+    const  image  = req.file;
     const plan = req.plan;
 
     if (plan !== "premium") {
@@ -228,8 +228,12 @@ export const removeImageObject = async (req, res) => {
   try {
     const { userId } = req.auth();
     const { object } = req.body;
-    const { image } = req.file;
+    const image = req.file;
     const plan = req.plan;
+
+    if (!image || !object) {
+      return res.json({ success: false, message: "Image and object required" });
+    }
 
     if (plan !== "premium") {
       return res.json({
@@ -238,22 +242,29 @@ export const removeImageObject = async (req, res) => {
       });
     }
 
-    const { public_id } = await cloudinary.uploader.upload(image.path);
+    const upload = await cloudinary.uploader.upload(image.path);
 
-    const imageUrl = cloudinary.url(public_id, {
-      transformation: [{ effect: `gen_remove: ${object}` }],
-      resource_type: "image",
+    const imageUrl = cloudinary.url(upload.public_id, {
+      transformation: [
+        {
+          effect: `gen_remove:${object}`,
+        },
+      ],
     });
 
-    await sql`INSERT INTO creations (user_id, prompt, content, type) 
-    VALUES (${userId}, ${`Removed ${object} from image`}, ${imageUrl}, 'image')`;
+    await sql`
+      INSERT INTO creations (user_id, prompt, content, type)
+      VALUES (${userId}, ${`Remove ${object}`}, ${imageUrl}, 'image')
+    `;
 
     res.json({ success: true, content: imageUrl });
   } catch (error) {
-    console.log(error.message);
+    console.error(error);
     res.json({ success: false, message: error.message });
   }
 };
+
+
 
 export const resumeReview = async (req, res) => {
   try {
