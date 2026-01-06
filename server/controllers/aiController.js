@@ -2,11 +2,12 @@ import OpenAI from "openai";
 import sql from "../configs/db.js";
 import { clerkClient } from "@clerk/express";
 import axios from "axios";
-import {v2 as cloudinary} from 'cloudinary';
+import { v2 as cloudinary } from "cloudinary";
 import FormData from "form-data";
-import fs from 'fs';
-import pdf from 'pdf-parse/lib/pdf-parse.js'
-// import FormData from "form-data";
+import fs from "fs";
+// import pdf from 'pdf-parse/lib/pdf-parse.js'
+// import pdf from 'pdf-parse';
+import * as pdfParse from "pdf-parse";
 
 const AI = new OpenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -27,38 +28,63 @@ export const generateArticle = async (req, res) => {
       });
     }
 
+    const tokenMap = {
+      800: 1200,
+      1200: 1800,
+      1600: 2400,
+    };
+    const maxTokens = tokenMap[length] || 1600;
+
     const response = await AI.chat.completions.create({
-      model: "gemini-2.5-flash",
-      messages: [{
+      model: "gemini-2.5-flash-lite",
+      messages: [
+        {
+          role: "system",
+          content: `You are a professional article writer.
+
+                    IMPORTANT RULES:
+                    - Make headings and sub headings as required
+                    - Output ONLY clean Markdown
+                    - Do NOT mention fonts, sizes, styles, or formatting instructions
+                    - Use Markdown headings (#, ##, ###)
+                    - Write full paragraphs
+                    - Include a clear conclusion
+                    - Never describe how text should be formatted`,
+        },
+        {
           role: "user",
-          content: prompt,
+          content: `${prompt}\n\nIMPORTANT: Complete all paragraphs fully. Do not end mid-sentence.`,
         },
       ],
-
       temperature: 0.7,
-      max_tokens: length,
-
+      max_tokens: maxTokens,
     });
 
-    const content = response.choices[0].message.content
+    const content = response.choices[0].message.content;
 
-    await sql`INSERT INTO creations (user_id, prompt, content, type) 
-    VALUES (${userId}, ${prompt}, ${content}, 'article')`;
+    await sql`
+      INSERT INTO creations (user_id, prompt, content, type)
+      VALUES (${userId}, ${prompt}, ${content}, 'article')
+    `;
 
-    if(plan !== 'premium'){
-        await clerkClient.users.updateUserMetadata(userId, {
-            privateMetadata:{
-                free_usage: free_usage + 1
-
-            }
-        })
+    if (plan !== "premium") {
+      await clerkClient.users.updateUserMetadata(userId, {
+        privateMetadata: {
+          free_usage: free_usage + 1,
+        },
+      });
     }
 
-    res.json({success: true, content});
-
+    res.json({
+      success: true,
+      content,
+    });
   } catch (error) {
-    console.log(error.message)
-    res.json({success: false, message: error.message})
+    console.error(error.message);
+    res.json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
@@ -77,40 +103,52 @@ export const generateBlogTitle = async (req, res) => {
     }
 
     const response = await AI.chat.completions.create({
-      model: "gemini-2.5-flash",
-      messages: [{
+      model: "gemini-2.5-flash-lite",
+      messages: [
+        {
+          role: "system",
+          content: `
+                      You are a professional blog title generator.
+
+                      STRICT RULES:
+                      - Output ONLY a Markdown bullet list
+                      - Each title must be on its own line
+                      - Use "-" for bullets
+                      - NO paragraphs
+                      - NO explanations
+                      - NO unfinished titles
+                      `,
+        },
+        {
           role: "user",
           content: prompt,
         },
       ],
 
       temperature: 0.7,
-      max_tokens: 100,
-
+      max_tokens: 200,
     });
 
-    const content = response.choices[0].message.content
+    const content = response.choices[0].message.content;
 
     await sql`INSERT INTO creations (user_id, prompt, content, type) 
     VALUES (${userId}, ${prompt}, ${content}, 'blog-title')`;
 
-    if(plan !== 'premium'){
-        await clerkClient.users.updateUserMetadata(userId, {
-            privateMetadata:{
-                free_usage: free_usage + 1
-
-            }
-        })
+    if (plan !== "premium") {
+      await clerkClient.users.updateUserMetadata(userId, {
+        privateMetadata: {
+          free_usage: free_usage + 1,
+        },
+      });
     }
 
-    res.json({success: true, content});
-
+    res.json({ success: true, content });
   } catch (error) {
-    console.log(error.message)
-    res.json({success: false, message: error.message})
+    console.log(error.message);
+    res.json({ success: false, message: error.message });
   }
 };
- 
+
 export const generateImage = async (req, res) => {
   try {
     const { userId } = req.auth();
@@ -124,30 +162,33 @@ export const generateImage = async (req, res) => {
       });
     }
 
-    const formData = new FormData()
-    formData.append('prompt', prompt)
-    const {data} = await axios.post("https://clipdrop-api.co/text-to-image/v1", formData, {
-      headers: {
-      ...formData.getHeaders(),
-      'x-api-key': process.env.CLIPDROP_API_KEY,
-      },
-      responseType: "arraybuffer",
+    const formData = new FormData();
+    formData.append("prompt", prompt);
+    const { data } = await axios.post(
+      "https://clipdrop-api.co/text-to-image/v1",
+      formData,
+      {
+        headers: {
+          ...formData.getHeaders(),
+          "x-api-key": process.env.CLIPDROP_API_KEY,
+        },
+        responseType: "arraybuffer",
+      }
+    );
 
-    })
-
-    const base64Image = `data:image/png;base64,${Buffer.from(data, 'binary').toString('base64')}`;
-    const {secure_url} = await cloudinary.uploader.upload(base64Image)
+    const base64Image = `data:image/png;base64,${Buffer.from(
+      data,
+      "binary"
+    ).toString("base64")}`;
+    const { secure_url } = await cloudinary.uploader.upload(base64Image);
 
     await sql`INSERT INTO creations (user_id, prompt, content, type, publish) 
     VALUES (${userId}, ${prompt}, ${secure_url}, 'image', ${publish ?? false})`;
 
-    
-
-    res.json({success: true, secure_url});
-
+    res.json({ success: true, secure_url });
   } catch (error) {
-    console.log(error.message)
-    res.json({success: false, message: error.message})
+    console.log(error.message);
+    res.json({ success: false, message: error.message });
   }
 };
 
@@ -164,26 +205,22 @@ export const removeImageBackground = async (req, res) => {
       });
     }
 
-    
-    const {secure_url} = await cloudinary.uploader.upload(image.path, {
+    const { secure_url } = await cloudinary.uploader.upload(image.path, {
       transformation: [
         {
           effect: "background_removal",
-          background_removal: 'remove_the_background'
-        }
-      ]
-    })
+          background_removal: "remove_the_background",
+        },
+      ],
+    });
 
     await sql`INSERT INTO creations (user_id, prompt, content, type) 
     VALUES (${userId}, 'Remove background from the image', ${secure_url}, 'image')`;
 
-    
-
-    res.json({success: true, content: secure_url});
-
+    res.json({ success: true, content: secure_url });
   } catch (error) {
-    console.log(error.message)
-    res.json({success: false, message: error.message})
+    console.log(error.message);
+    res.json({ success: false, message: error.message });
   }
 };
 
@@ -201,24 +238,20 @@ export const removeImageObject = async (req, res) => {
       });
     }
 
-    
-    const {public_id} = await cloudinary.uploader.upload(image.path)
+    const { public_id } = await cloudinary.uploader.upload(image.path);
 
     const imageUrl = cloudinary.url(public_id, {
-      transformation: [{effect: `gen_remove: ${object}`}],
-      resource_type: 'image'
-    })
+      transformation: [{ effect: `gen_remove: ${object}` }],
+      resource_type: "image",
+    });
 
     await sql`INSERT INTO creations (user_id, prompt, content, type) 
     VALUES (${userId}, ${`Removed ${object} from image`}, ${imageUrl}, 'image')`;
 
-    
-
-    res.json({success: true, content: imageUrl});
-
+    res.json({ success: true, content: imageUrl });
   } catch (error) {
-    console.log(error.message)
-    res.json({success: false, message: error.message})
+    console.log(error.message);
+    res.json({ success: false, message: error.message });
   }
 };
 
@@ -235,20 +268,24 @@ export const resumeReview = async (req, res) => {
       });
     }
 
-    
-   if(resume.size > 5*1024*1024){
-    return res.json({success: false, message: "Resume file size exceeds allowed size (5MB)."})
-   }
-   
-   const dataBuffer = fs.readFileSync(resume.path)
-   const pdfData = await pdf(dataBuffer)
+    if (resume.size > 5 * 1024 * 1024) {
+      return res.json({
+        success: false,
+        message: "Resume file size exceeds allowed size (5MB).",
+      });
+    }
 
-   const prompt = `Review the following resume and provide constructive feedback on
-    its strengths, weaknesses, and areas for improvement. Resume content: \n\n ${pdfData.text}`
+    const dataBuffer = fs.readFileSync(resume.path);
+    //  const pdfData = await pdf(dataBuffer)
+    const pdfData = await pdfParse.default(dataBuffer);
 
-       const response = await AI.chat.completions.create({
+    const prompt = `Review the following resume and provide constructive feedback on
+    its strengths, weaknesses, and areas for improvement. Resume content: \n\n ${pdfData.text}`;
+
+    const response = await AI.chat.completions.create({
       model: "gemini-2.5-flash",
-      messages: [{
+      messages: [
+        {
           role: "user",
           content: prompt,
         },
@@ -256,21 +293,16 @@ export const resumeReview = async (req, res) => {
 
       temperature: 0.7,
       max_tokens: 1000,
-
     });
 
-    const content = response.choices[0].message.content
+    const content = response.choices[0].message.content;
 
     await sql`INSERT INTO creations (user_id, prompt, content, type) 
     VALUES (${userId}, 'Review the uploaded resume', ${content}, 'resume-review')`;
 
-    
-
-    res.json({success: true, content});
-
+    res.json({ success: true, content });
   } catch (error) {
-    console.log(error.message)
-    res.json({success: false, message: error.message})
+    console.log(error.message);
+    res.json({ success: false, message: error.message });
   }
 };
-

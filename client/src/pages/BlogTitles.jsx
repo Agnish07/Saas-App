@@ -1,6 +1,14 @@
+import { useAuth } from '@clerk/clerk-react';
 import { Sparkles,Edit, Hash } from 'lucide-react';
 import React from 'react'
 import { useState } from 'react';
+import toast from "react-hot-toast";
+import ReactMarkdown from 'react-markdown'
+import Markdown from 'react-markdown'
+import remarkGfm from "remark-gfm";
+import axios from 'axios'
+
+axios.defaults.baseURL = import.meta.env.VITE_BASE_URL;
 
 const BlogTitles = () => {
   
@@ -10,10 +18,34 @@ const BlogTitles = () => {
   
     const [selectedCategory, setSelectedCategory] = useState('General');
     const [input, setInput] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [content, setContent] = useState("");
+    const { getToken } = useAuth();
 
 
   const onSubmitHandler = async (e) => {
     e.preventDefault();
+    try {
+      setLoading(true)
+      const prompt = `Generate blog titles for the keyword ${input} int the category ${selectedCategory}`
+
+      const {data} = await axios.post('/api/ai/generate-blog-title', {prompt}, 
+        {
+          headers: {Authorization: `Bearer ${await getToken()}`}
+        }
+      )
+
+      if(data.success){
+        setContent(data.content)
+      }
+
+      else{
+        toast.error(data.message)
+      }
+    } catch (error) {
+      toast.error(error.message)
+    }
+    setLoading(false)
   };
 
   return (
@@ -62,12 +94,13 @@ const BlogTitles = () => {
 
           <div className="mt-auto">
             <button
+              disabled = {loading}
               type="submit"
               className="w-full flex justify-center items-center gap-2 bg-[#313131] text-[#E6E6E6] 
                       px-4 py-2 mt-6 text-sm rounded-lg border border-[#3A3A3A]
                       hover:bg-[#3F3F3F] transition cursor-pointer"
             >
-              <Hash className="w-5" />
+              {loading ? <span className='w-4 h-4 my-1 rounded-full border-2 border-t-transparent animate-spin'></span> : <Hash className="w-5" />}
               Generate Title
             </button>
           </div>
@@ -79,13 +112,31 @@ const BlogTitles = () => {
             <Hash className="w-5 h-5 text-[#E6E6E6]" />
             <h1 className="text-xl font-semibold m-0 text-[#E6E6E6]">Preview</h1>
           </div>
-
-          <div className="flex-1 flex justify-center items-center">
+            {
+              !content ? (
+                <div className="flex-1 flex justify-center items-center">
             <div className="text-sm flex flex-col items-center gap-5 text-[#9E9E9E]">
               <Hash className="w-9 h-9 text-[#7A7A7A]" />
               <p className="text-center">Enter a topic and click “Generate Title" to get started</p>
             </div>
           </div>
+              ) : (
+                <div className="mt-4 flex-1 overflow-y-auto text-sm">
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    components={{
+      p: ({ children }) => (
+        <p className="mb-2 text-[#E6E6E6]">{children}</p>
+      ),
+    }}
+  >
+    {content}
+  </ReactMarkdown>
+</div>
+
+              )
+            }
+          
         </div>
       </div>
     </div>
