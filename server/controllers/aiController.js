@@ -5,9 +5,9 @@ import axios from "axios";
 import { v2 as cloudinary } from "cloudinary";
 import FormData from "form-data";
 import fs from "fs";
-// import pdf from 'pdf-parse/lib/pdf-parse.js'
-// import pdf from 'pdf-parse';
-import * as pdfParse from "pdf-parse";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+
+
 
 const AI = new OpenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -272,7 +272,12 @@ export const resumeReview = async (req, res) => {
     const resume = req.file;
     const plan = req.plan;
 
+    if (!resume) {
+      return res.json({ success: false, message: "Resume file is required" });
+    }
+
     if (plan !== "premium") {
+      fs.unlinkSync(resume.path);
       return res.json({
         success: false,
         message: "Limit reached. Upgrade to continue.",
@@ -280,40 +285,72 @@ export const resumeReview = async (req, res) => {
     }
 
     if (resume.size > 5 * 1024 * 1024) {
+      fs.unlinkSync(resume.path);
       return res.json({
         success: false,
-        message: "Resume file size exceeds allowed size (5MB).",
+        message: "Resume must be under 5MB",
       });
     }
 
-    const dataBuffer = fs.readFileSync(resume.path);
-    //  const pdfData = await pdf(dataBuffer)
-    const pdfData = await pdfParse.default(dataBuffer);
+    const buffer = fs.readFileSync(resume.path);
+    const uint8Array = new Uint8Array(buffer);
 
-    const prompt = `Review the following resume and provide constructive feedback on
-    its strengths, weaknesses, and areas for improvement. Resume content: \n\n ${pdfData.text}`;
+    const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
+    const pdf = await loadingTask.promise;
+
+    let text = "";
+
+    const MAX_RESUME_CHARS = 6000;
+    const safeResumeText = text.slice(0, MAX_RESUME_CHARS);
+
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(item => item.str).join(" ") + "\n";
+    }
+
+    const prompt = `
+You MUST return a COMPLETE response.
+
+SECTIONS (MANDATORY):
+1. Strengths
+2. Weaknesses
+3. Improvements
+4. ATS Optimization Tips
+
+RULES:
+- Do NOT end mid-sentence
+- Keep bullet points concise
+- Finish every section
+- End the response with exactly this word on a new line: END
+
+Resume Content:
+${safeResumeText}
+`;
 
     const response = await AI.chat.completions.create({
-      model: "gemini-2.5-flash",
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-
+      model: "gemini-2.5-flash-lite",
+      messages: [{ role: "user", content: prompt }],
       temperature: 0.7,
-      max_tokens: 1000,
+      max_tokens: 1800,
     });
 
     const content = response.choices[0].message.content;
 
-    await sql`INSERT INTO creations (user_id, prompt, content, type) 
-    VALUES (${userId}, 'Review the uploaded resume', ${content}, 'resume-review')`;
+    await sql`
+      INSERT INTO creations (user_id, prompt, content, type)
+      VALUES (${userId}, 'Resume Review', ${content}, 'resume-review')
+    `;
 
+    fs.unlinkSync(resume.path);
     res.json({ success: true, content });
   } catch (error) {
-    console.log(error.message);
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
     res.json({ success: false, message: error.message });
   }
 };
+
+

@@ -2,6 +2,7 @@ import express from "express";
 import { auth } from "../middlewares/auth.js";
 import { generateArticle, generateBlogTitle, generateImage, removeImageBackground, removeImageObject, resumeReview } from "../controllers/aicontroller.js";
 import { upload } from "../configs/multer.js";
+import multer from "multer";
 
 const aiRouter = express.Router();
 
