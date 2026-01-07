@@ -198,8 +198,12 @@ export const generateImage = async (req, res) => {
 export const removeImageBackground = async (req, res) => {
   try {
     const { userId } = req.auth();
-    const  image  = req.file;
+    const image = req.file;
     const plan = req.plan;
+
+    if (!image) {
+      return res.json({ success: false, message: "Image required" });
+    }
 
     if (plan !== "premium") {
       return res.json({
@@ -208,24 +212,43 @@ export const removeImageBackground = async (req, res) => {
       });
     }
 
-    const { secure_url } = await cloudinary.uploader.upload(image.path, {
-      transformation: [
-        {
-          effect: "background_removal",
-          background_removal: "remove_the_background",
-        },
-      ],
+    const formData = new FormData();
+    formData.append("image_file", image.buffer, {
+      filename: "image.png",
+      contentType: image.mimetype,
     });
 
-    await sql`INSERT INTO creations (user_id, prompt, content, type) 
-    VALUES (${userId}, 'Remove background from the image', ${secure_url}, 'image')`;
+    const { data } = await axios.post(
+      "https://clipdrop-api.co/remove-background/v1",
+      formData,
+      {
+        headers: {
+          ...formData.getHeaders(),
+          "x-api-key": process.env.CLIPDROP_API_KEY,
+        },
+        responseType: "arraybuffer",
+      }
+    );
 
-    res.json({ success: true, content: secure_url });
+    const base64Image = `data:image/png;base64,${Buffer.from(
+      data
+    ).toString("base64")}`;
+
+    const upload = await cloudinary.uploader.upload(base64Image);
+
+    await sql`
+      INSERT INTO creations (user_id, prompt, content, type)
+      VALUES (${userId}, 'Remove background', ${upload.secure_url}, 'image')
+    `;
+
+    res.json({ success: true, content: upload.secure_url });
   } catch (error) {
-    console.log(error.message);
-    res.json({ success: false, message: error.message });
+    console.error(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
 
 export const removeImageObject = async (req, res) => {
   try {
@@ -245,25 +268,32 @@ export const removeImageObject = async (req, res) => {
       });
     }
 
-    const upload = await cloudinary.uploader.upload(image.path);
-
-    const imageUrl = cloudinary.url(upload.public_id, {
-      transformation: [
+    const uploadResult = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
         {
-          effect: `gen_remove:${object}`,
+          transformation: [
+            {
+              effect: `gen_remove:${object}`,
+            },
+          ],
+          format: "png",
         },
-      ],
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      ).end(image.buffer);
     });
 
     await sql`
       INSERT INTO creations (user_id, prompt, content, type)
-      VALUES (${userId}, ${`Remove ${object}`}, ${imageUrl}, 'image')
+      VALUES (${userId}, ${`Remove ${object}`}, ${uploadResult.secure_url}, 'image')
     `;
 
-    res.json({ success: true, content: imageUrl });
+    res.json({ success: true, content: uploadResult.secure_url });
   } catch (error) {
-    console.error(error);
-    res.json({ success: false, message: error.message });
+    console.error("OBJECT REMOVE ERROR:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -294,11 +324,32 @@ export const resumeReview = async (req, res) => {
     const safeResumeText = data.text.slice(0, MAX_RESUME_CHARS);
 
     const response = await AI.chat.completions.create({
-      model: "gemini-2.5-flash-lite",
-      messages: [{ role: "user", content: safeResumeText }],
-      temperature: 0.7,
-      max_tokens: 1800,
-    });
+  model: "gemini-2.5-flash-lite",
+  messages: [
+    {
+      role: "system",
+      content: `
+You are a professional resume reviewer.
+
+STRICT RULES:
+- Review the resume in clear sections
+- Finish every sentence and section
+- Use bullet points where appropriate
+- Include strengths, weaknesses, and suggestions
+- Always end with a clear conclusion
+- NEVER end mid-sentence
+- Don't make it more than 1200-1500 words
+`
+    },
+    {
+      role: "user",
+      content: safeResumeText
+    }
+  ],
+  temperature: 0.6,
+  max_tokens: 3000
+});
+
 
     const content = response.choices[0].message.content;
 

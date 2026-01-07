@@ -1,4 +1,4 @@
-import { Sparkles, Scissors } from "lucide-react";
+import { Sparkles, Eraser } from "lucide-react";
 import React, { useState } from "react";
 import axios from "axios";
 import { useAuth } from "@clerk/clerk-react";
@@ -6,9 +6,8 @@ import toast from "react-hot-toast";
 
 axios.defaults.baseURL = import.meta.env.VITE_BASE_URL;
 
-const RemoveObject = () => {
+const RemoveBackground = () => {
   const [image, setImage] = useState(null);
-  const [object, setObject] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState("");
   const { getToken } = useAuth();
@@ -16,8 +15,8 @@ const RemoveObject = () => {
   const onSubmitHandler = async (e) => {
     e.preventDefault();
 
-    if (!image || !object.trim()) {
-      toast.error("Image and object description are required");
+    if (!image) {
+      toast.error("Please upload an image");
       return;
     }
 
@@ -26,7 +25,6 @@ const RemoveObject = () => {
 
       const formData = new FormData();
       formData.append("image", image);
-      formData.append("object", object);
 
       const { data } = await axios.post(
         "/api/ai/remove-image-background",
@@ -61,31 +59,23 @@ const RemoveObject = () => {
         >
           <div className="flex items-center gap-3 mb-4">
             <Sparkles className="w-6 h-6" />
-            <h1 className="text-xl font-semibold">Object Remover</h1>
+            <h1 className="text-xl font-semibold">Background Remover</h1>
           </div>
 
-          <label className="text-sm text-[#B0B0B0]">Upload Image</label>
+          <label className="mt-6 text-sm font-medium text-[#B0B0B0]">
+            Upload Image
+          </label>
           <input
+            onChange={(e) => setInput(e.target.files[0])}
             type="file"
             accept="image/*"
-            onChange={(e) => setImage(e.target.files[0])}
-            className="mt-2 w-full text-sm rounded-md bg-[#2A2A2A]
-              border border-[#3A3A3A]
-              file:bg-[#313131] file:text-[#E6E6E6]
-              file:border-0 file:px-3 file:py-1 file:rounded
-              hover:file:bg-[#3F3F3F]"
-          />
-
-          <label className="mt-4 text-sm text-[#B0B0B0]">
-            Describe Object to Remove
-          </label>
-          <textarea
-            value={object}
-            onChange={(e) => setObject(e.target.value)}
-            rows={3}
-            placeholder="e.g. speaker, logo, person"
-            className="mt-2 p-2 bg-[#2A2A2A] text-sm rounded-md
-              border border-[#3A3A3A] outline-none"
+            className="w-full p-2 px-3 mt-2 text-sm rounded-md 
+                       bg-[#2A2A2A] text-[#E6E6E6]
+                       border border-[#3A3A3A] 
+                       file:bg-[#313131] file:text-[#E6E6E6]
+                       file:border-0 file:px-3 file:py-1 file:rounded-md
+                       hover:file:bg-[#3F3F3F]
+                       transition"
           />
 
           <div className="mt-auto pt-6">
@@ -100,9 +90,9 @@ const RemoveObject = () => {
               {loading ? (
                 <span className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"></span>
               ) : (
-                <Scissors className="w-5 h-5" />
+                <Eraser className="w-5 h-5" />
               )}
-              Remove Object
+              Remove Background
             </button>
           </div>
         </form>
@@ -110,13 +100,13 @@ const RemoveObject = () => {
         {/* RIGHT PREVIEW */}
         <div className="w-1/2 min-w-[420px] p-6 bg-[#191919] rounded-lg border border-[#2A2A2A] flex flex-col">
           <div className="flex items-center gap-3 mb-4">
-            <Scissors className="w-5 h-5" />
+            <Eraser className="w-5 h-5" />
             <h1 className="text-xl font-semibold">Processed Image</h1>
           </div>
 
           {!result ? (
             <div className="flex-1 flex justify-center items-center text-[#9E9E9E] text-sm">
-              Upload an image and remove an object to preview
+              Upload an image to remove background
             </div>
           ) : (
             <img
@@ -132,4 +122,4 @@ const RemoveObject = () => {
   );
 };
 
-export default RemoveObject;
+export default RemoveBackground;
