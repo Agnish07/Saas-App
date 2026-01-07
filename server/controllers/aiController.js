@@ -5,7 +5,10 @@ import axios from "axios";
 import { v2 as cloudinary } from "cloudinary";
 import FormData from "form-data";
 import fs from "fs";
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+
+const pdfParse = require("pdf-parse");
 
 
 
@@ -265,7 +268,6 @@ export const removeImageObject = async (req, res) => {
 };
 
 
-
 export const resumeReview = async (req, res) => {
   try {
     const { userId } = req.auth();
@@ -277,61 +279,23 @@ export const resumeReview = async (req, res) => {
     }
 
     if (plan !== "premium") {
-      fs.unlinkSync(resume.path);
       return res.json({
         success: false,
         message: "Limit reached. Upgrade to continue.",
       });
     }
 
-    if (resume.size > 5 * 1024 * 1024) {
-      fs.unlinkSync(resume.path);
-      return res.json({
-        success: false,
-        message: "Resume must be under 5MB",
-      });
-    }
+   const buffer = req.file.buffer;
+   const data = await pdfParse(buffer);
 
-    const buffer = fs.readFileSync(resume.path);
-    const uint8Array = new Uint8Array(buffer);
 
-    const loadingTask = pdfjsLib.getDocument({ data: uint8Array });
-    const pdf = await loadingTask.promise;
-
-    let text = "";
 
     const MAX_RESUME_CHARS = 6000;
-    const safeResumeText = text.slice(0, MAX_RESUME_CHARS);
-
-
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map(item => item.str).join(" ") + "\n";
-    }
-
-    const prompt = `
-You MUST return a COMPLETE response.
-
-SECTIONS (MANDATORY):
-1. Strengths
-2. Weaknesses
-3. Improvements
-4. ATS Optimization Tips
-
-RULES:
-- Do NOT end mid-sentence
-- Keep bullet points concise
-- Finish every section
-- End the response with exactly this word on a new line: END
-
-Resume Content:
-${safeResumeText}
-`;
+    const safeResumeText = data.text.slice(0, MAX_RESUME_CHARS);
 
     const response = await AI.chat.completions.create({
       model: "gemini-2.5-flash-lite",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: safeResumeText }],
       temperature: 0.7,
       max_tokens: 1800,
     });
@@ -343,14 +307,9 @@ ${safeResumeText}
       VALUES (${userId}, 'Resume Review', ${content}, 'resume-review')
     `;
 
-    fs.unlinkSync(resume.path);
     res.json({ success: true, content });
   } catch (error) {
-    if (req.file?.path && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
+    console.error(error);
     res.json({ success: false, message: error.message });
   }
 };
-
-
