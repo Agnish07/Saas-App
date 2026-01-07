@@ -29,7 +29,7 @@ const RemoveObject = () => {
       formData.append("object", object);
 
       const { data } = await axios.post(
-        "/api/ai/remove-image-object",
+        "/api/ai/remove-image-background",
         formData,
         {
           headers: {
